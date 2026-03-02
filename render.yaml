@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: potato-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: COINREMITTER_API_KEY
+        sync: false
+      - key: COINREMITTER_API_PASSWORD
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
+      - key: DATABASE_PATH
+        value: /opt/render/project/src/bot.db
