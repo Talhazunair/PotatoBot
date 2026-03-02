@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
 httpx
-aiosqlite
+asyncpg
 python-dotenv
 python-multipart
