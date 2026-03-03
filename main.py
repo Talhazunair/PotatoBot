@@ -85,9 +85,8 @@ async def payment_notify(request: Request):
         return {"ok": False}
 
     # Find order by invoice_id
-    conn = db.db()
-    cur = await conn.execute("SELECT * FROM orders WHERE invoice_id=?", (invoice_id,))
-    order = await cur.fetchone()
+    async with db.pool().acquire() as conn:
+        order = await conn.fetchrow("SELECT * FROM orders WHERE invoice_id=$1", invoice_id)
 
     if not order:
         log.warning("No order found for invoice %s", invoice_id)

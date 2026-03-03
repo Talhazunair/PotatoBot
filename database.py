@@ -1,24 +1,48 @@
+import asyncio
+import logging
+import ssl
+
 import asyncpg
 import json
 from config import DATABASE_URL
+
+log = logging.getLogger("database")
 
 POOL: asyncpg.Pool | None = None
 
 
 async def init_db():
     global POOL
-    POOL = await asyncpg.create_pool(
-        DATABASE_URL,
-        min_size=1,
-        max_size=10,
-        command_timeout=60,
-        max_inactive_connection_lifetime=300,
-        server_settings={
-            'application_name': 'PotatoBot',
-            'statement_timeout': '60000',
-            'idle_in_transaction_session_timeout': '60000'
-        }
-    )
+
+    # Create SSL context that doesn't verify certs (Railway uses self-signed)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            log.info("Connecting to database (attempt %d/%d)...", attempt, max_retries)
+            POOL = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=1,
+                max_size=10,
+                command_timeout=60,
+                max_inactive_connection_lifetime=300,
+                ssl=ssl_ctx,
+                server_settings={
+                    'application_name': 'PotatoBot',
+                    'statement_timeout': '60000',
+                    'idle_in_transaction_session_timeout': '60000'
+                }
+            )
+            log.info("Database pool created successfully.")
+            break
+        except (ConnectionRefusedError, OSError, asyncpg.PostgresError) as exc:
+            log.warning("Database connection attempt %d failed: %s", attempt, exc)
+            if attempt == max_retries:
+                raise
+            await asyncio.sleep(2 ** attempt)  # exponential backoff: 2, 4, 8, 16s
 
 
     async with POOL.acquire() as conn:
