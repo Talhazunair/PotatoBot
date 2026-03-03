@@ -56,6 +56,10 @@ async def webhook(token: str, request: Request):
         import json as _json
         body = await request.body()
         log.info("Webhook received: %s", body[:500])
+
+        if not body:
+            return {"ok": True, "msg": "Empty body ignored"}
+
         payload = _json.loads(body)
         # Potato sends updates as a JSON array
         updates = payload if isinstance(payload, list) else [payload]

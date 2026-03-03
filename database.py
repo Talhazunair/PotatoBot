@@ -7,7 +7,19 @@ POOL: asyncpg.Pool | None = None
 
 async def init_db():
     global POOL
-    POOL = await asyncpg.create_pool(DATABASE_URL)
+    POOL = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=10,
+        command_timeout=60,
+        max_inactive_connection_lifetime=300,
+        server_settings={
+            'application_name': 'PotatoBot',
+            'statement_timeout': '60000',
+            'idle_in_transaction_session_timeout': '60000'
+        }
+    )
+
 
     async with POOL.acquire() as conn:
         await conn.execute("""
