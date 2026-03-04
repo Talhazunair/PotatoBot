@@ -153,7 +153,20 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+            CREATE TABLE IF NOT EXISTS categories (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                parent_id INTEGER REFERENCES categories(id) ON DELETE CASCADE
+            );
         """)
+
+        # Add category_id column to products if not exists
+        try:
+            await conn.execute("""
+                ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id);
+            """)
+        except Exception:
+            pass  # Column already exists
 
 
 def pool() -> asyncpg.Pool:
@@ -239,13 +252,44 @@ async def has_pending_request(user_id: int) -> bool:
         return row is not None
 
 
+# ── Categories ─────────────────────────────────────────
+async def create_category(name: str, parent_id: int | None = None) -> int:
+    async with pool().acquire() as conn:
+        cat_id = await conn.fetchval(
+            "INSERT INTO categories (name, parent_id) VALUES ($1,$2) RETURNING id",
+            name, parent_id
+        )
+        return cat_id
+
+
+async def get_categories(parent_id: int | None = None) -> list[dict]:
+    """Get top-level categories (parent_id IS NULL) or subcategories of a parent."""
+    async with pool().acquire() as conn:
+        if parent_id is None:
+            rows = await conn.fetch("SELECT * FROM categories WHERE parent_id IS NULL ORDER BY name")
+        else:
+            rows = await conn.fetch("SELECT * FROM categories WHERE parent_id=$1 ORDER BY name", parent_id)
+        return [dict(r) for r in rows]
+
+
+async def get_category(cat_id: int) -> dict | None:
+    async with pool().acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM categories WHERE id=$1", cat_id)
+        return to_dict(row)
+
+
+async def delete_category(cat_id: int):
+    async with pool().acquire() as conn:
+        await conn.execute("DELETE FROM categories WHERE id=$1", cat_id)
+
+
 # ── Products ───────────────────────────────────────────
 async def add_product(seller_id: int, name: str, description: str, price: float,
-                      category: str = "", options: list | None = None) -> int:
+                      category_id: int | None = None) -> int:
     async with pool().acquire() as conn:
         product_id = await conn.fetchval(
-            "INSERT INTO products (seller_id,name,description,price,category,options_json) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
-            seller_id, name, description, price, category, json.dumps(options or [])
+            "INSERT INTO products (seller_id,name,description,price,category_id) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+            seller_id, name, description, price, category_id
         )
         return product_id
 

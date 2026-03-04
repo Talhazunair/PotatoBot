@@ -66,13 +66,8 @@ def products_kb(products: list[dict], page: int, total: int, per_page: int = 5) 
     return _inline_kb(rows)
 
 
-def product_detail_kb(product: dict, options: list | None = None) -> dict:
+def product_detail_kb(product: dict) -> dict:
     rows: list[list[dict]] = []
-    if options:
-        for opt in options:
-            opt_name = opt.get("name", "Option")
-            for val in opt.get("values", []):
-                rows.append([_btn(f"{opt_name}: {val}", f"prod:opt:{product['id']}:{opt_name}:{val}")])
     rows.append([_btn("🛒 Add to Cart", f"cart:add:{product['id']}")])
     rows.append([_btn("◀️ Back to Products", "prod:list:0")])
     return _inline_kb(rows)
@@ -176,7 +171,6 @@ def edit_product_kb(product: dict) -> dict:
     return _inline_kb([
         [_btn("✏️ Edit Name", f"sell:field:{pid}:name"), _btn("✏️ Edit Price", f"sell:field:{pid}:price")],
         [_btn("✏️ Edit Description", f"sell:field:{pid}:description")],
-        [_btn("✏️ Edit Options", f"sell:field:{pid}:options")],
         [_btn("📷 Upload Images", f"sell:img:{pid}")],
         [_btn("🗑 Deactivate", f"sell:deactivate:{pid}")],
         [_btn("◀️ Back", "sell:list:0")],
@@ -186,12 +180,10 @@ def edit_product_kb(product: dict) -> dict:
 # ── Admin ──────────────────────────────────────────────
 def admin_menu_kb() -> dict:
     return _inline_kb([
-        [_btn("➕ Add Seller", "adm:add_seller")],
-        [_btn("📋 Manage Sellers", "adm:sellers")],
-        [_btn("📝 Seller Requests", "adm:seller_requests")],
-        [_btn("🗑 Remove Product", "adm:products:0")],
-        [_btn("📨 Support Tickets", "adm:support")],
-        [_btn("⚠️ Disputes", "adm:disputes")],
+        [_btn("➕ Add Seller", "adm:add_seller"), _btn("📋 Manage Sellers", "adm:sellers")],
+        [_btn("📝 Seller Requests", "adm:seller_requests"), _btn("🗑 Remove Product", "adm:products:0")],
+        [_btn("📨 Support Tickets", "adm:support"), _btn("⚠️ Disputes", "adm:disputes")],
+        [_btn("📁 Categories", "adm:categories")],
         [_btn("◀️ Main Menu", "menu:main")],
     ])
 
@@ -256,6 +248,42 @@ def admin_dispute_detail_kb(dispute_id: int) -> dict:
         [_btn("✅ Resolve", f"adm:resolve_dispute:{dispute_id}")],
         [_btn("◀️ Back", "adm:disputes")],
     ])
+
+
+# ── Categories (admin) ─────────────────────────────────
+def admin_categories_kb(categories: list[dict]) -> dict:
+    rows = [[_btn(f"📂 {c['name']}", f"adm:view_cat:{c['id']}")] for c in categories]
+    rows.append([_btn("➕ Add Category", "adm:add_cat")])
+    rows.append([_btn("◀️ Admin Menu", "adm:menu")])
+    return _inline_kb(rows)
+
+
+def admin_subcategories_kb(subcategories: list[dict], parent_id: int) -> dict:
+    rows = [[_btn(f"📁 {s['name']}", f"adm:view_subcat:{s['id']}")] for s in subcategories]
+    rows.append([_btn("➕ Add Subcategory", f"adm:add_subcat:{parent_id}")])
+    rows.append([_btn("🗑 Delete Category", f"adm:del_cat:{parent_id}")])
+    rows.append([_btn("◀️ Back", "adm:categories")])
+    return _inline_kb(rows)
+
+
+def admin_subcat_actions_kb(subcat_id: int, parent_id: int) -> dict:
+    return _inline_kb([
+        [_btn("🗑 Delete Subcategory", f"adm:del_subcat:{subcat_id}")],
+        [_btn("◀️ Back", f"adm:view_cat:{parent_id}")],
+    ])
+
+
+# ── Category selection (seller) ────────────────────────
+def seller_category_select_kb(categories: list[dict]) -> dict:
+    rows = [[_btn(f"📂 {c['name']}", f"sell:pick_cat:{c['id']}")] for c in categories]
+    rows.append([_btn("⏭ Skip Category", "sell:pick_cat:0")])
+    return _inline_kb(rows)
+
+
+def seller_subcategory_select_kb(subcategories: list[dict], parent_id: int) -> dict:
+    rows = [[_btn(f"📁 {s['name']}", f"sell:pick_subcat:{s['id']}")] for s in subcategories]
+    rows.append([_btn("⏭ No Subcategory", f"sell:pick_subcat:0")])
+    return _inline_kb(rows)
 
 
 # ── Disputes (user) ───────────────────────────────────

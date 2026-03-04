@@ -1,5 +1,4 @@
 """Seller dashboard — add/edit products, upload images."""
-import json
 import potato_api as api
 import database as db
 import keyboards as kb
@@ -33,6 +32,12 @@ async def handle_callback(chat_id: int, user_id: int, data: str, msg_id: int):
         await deactivate(chat_id, user_id, msg_id, product_id)
     elif action == "orders":
         await seller_orders(chat_id, user_id, msg_id)
+    elif action == "pick_cat":
+        cat_id = int(parts[2])
+        await pick_category(chat_id, user_id, msg_id, cat_id)
+    elif action == "pick_subcat":
+        subcat_id = int(parts[2])
+        await pick_subcategory(chat_id, user_id, msg_id, subcat_id)
 
 
 async def apply_seller(chat_id: int, user_id: int, msg_id: int):
@@ -97,16 +102,26 @@ async def edit_product(chat_id: int, user_id: int, msg_id: int, product_id: int)
         await api.send_message(chat_id, "❌ Product not found.", kb.back_kb("sell:list:0"))
         return
 
-    options = json.loads(product.get("options_json", "[]"))
+    # Get category name
+    cat_name = "N/A"
+    if product.get("category_id"):
+        cat = await db.get_category(product["category_id"])
+        if cat:
+            cat_name = cat["name"]
+            # Check if it's a subcategory
+            if cat.get("parent_id"):
+                parent = await db.get_category(cat["parent_id"])
+                if parent:
+                    cat_name = f"{parent['name']} > {cat['name']}"
+
     text = (
         f"✏️ *Edit Product*\n\n"
         f"Name: {product['name']}\n"
         f"Price: ${product['price']:.2f}\n"
         f"Description: {product['description'][:100]}\n"
+        f"Category: {cat_name}\n"
         f"Status: {'Active' if product['active'] else 'Inactive'}\n"
     )
-    if options:
-        text += "Options: " + ", ".join(o.get("name", "") for o in options)
 
     images = await db.get_product_images(product_id)
     text += f"\nImages: {len(images)}"
@@ -120,7 +135,6 @@ async def start_edit_field(chat_id: int, user_id: int, msg_id: int, product_id: 
         "name": "Enter the new product name:",
         "price": "Enter the new price (number):",
         "description": "Enter the new description:",
-        "options": 'Enter options as JSON, e.g. [{"name":"Size","values":["S","M","L"]}]:',
     }
     prompt = prompts.get(field, "Enter new value:")
     await db.set_fsm(user_id, f"edit_{field}", {"product_id": product_id})
@@ -154,10 +168,78 @@ async def seller_orders(chat_id: int, user_id: int, msg_id: int):
     await api.send_message(chat_id, "📦 *My Orders*", kb.seller_orders_kb())
 
 
+# ── Category selection during product creation ─────────
+async def pick_category(chat_id: int, user_id: int, msg_id: int, cat_id: int):
+    """Seller picks a category (or skips with cat_id=0)."""
+    state, fdata = await db.get_fsm(user_id)
+    if state != "sell_pick_category":
+        return
+
+    await api.delete_message(chat_id, msg_id)
+
+    if cat_id == 0:
+        # Skip category — create product without category
+        await _create_product(chat_id, user_id, fdata, category_id=None)
+        return
+
+    # Check for subcategories
+    subcategories = await db.get_categories(parent_id=cat_id)
+    if subcategories:
+        # Show subcategory picker
+        fdata["parent_cat_id"] = cat_id
+        await db.set_fsm(user_id, "sell_pick_subcategory", fdata)
+        await api.send_message(
+            chat_id,
+            "📁 Select a *subcategory*:",
+            kb.seller_subcategory_select_kb(subcategories, cat_id),
+        )
+    else:
+        # No subcategories — use this category directly
+        await _create_product(chat_id, user_id, fdata, category_id=cat_id)
+
+
+async def pick_subcategory(chat_id: int, user_id: int, msg_id: int, subcat_id: int):
+    """Seller picks a subcategory (or skips with subcat_id=0)."""
+    state, fdata = await db.get_fsm(user_id)
+    if state != "sell_pick_subcategory":
+        return
+
+    await api.delete_message(chat_id, msg_id)
+
+    if subcat_id == 0:
+        # Use parent category
+        await _create_product(chat_id, user_id, fdata, category_id=fdata.get("parent_cat_id"))
+    else:
+        # Use subcategory
+        await _create_product(chat_id, user_id, fdata, category_id=subcat_id)
+
+
+async def _create_product(chat_id: int, user_id: int, fdata: dict, category_id: int | None):
+    """Create the product and offer image upload."""
+    user = await db.get_user(user_id)
+    product_id = await db.add_product(
+        seller_id=user["id"],
+        name=fdata["name"],
+        description=fdata["description"],
+        price=fdata["price"],
+        category_id=category_id,
+    )
+    await db.clear_fsm(user_id)
+
+    # Go directly to image upload
+    await db.set_fsm(user_id, "sell_image", {"product_id": product_id, "count": 0})
+    await api.send_message(
+        chat_id,
+        f"✅ Product *{fdata['name']}* created (ID: {product_id})!\n\n"
+        "📷 Now send product images (up to 5).\nSend /done when finished, or /done to skip images.",
+    )
+
+
 async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
     """FSM handler for seller text inputs."""
     state, fdata = await db.get_fsm(user_id)
 
+    # ── Add product flow: name → description → price → category pick ──
     if state == "sell_name":
         fdata["name"] = text
         await db.set_fsm(user_id, "sell_desc", fdata)
@@ -175,46 +257,21 @@ async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
             await api.send_message(chat_id, "❌ Invalid price. Enter a number:")
             return
         fdata["price"] = price
-        await db.set_fsm(user_id, "sell_category", fdata)
-        await api.send_message(chat_id, "📁 Enter the product *category* (or type 'skip'):")
 
-    elif state == "sell_category":
-        fdata["category"] = "" if text.strip().lower() == "skip" else text.strip()
-        await db.set_fsm(user_id, "sell_options", fdata)
-        await api.send_message(
-            chat_id,
-            '⚙️ Enter product *options* as JSON (or type "skip"):\nExample: [{"name":"Size","values":["S","M","L"]}]',
-        )
+        # Show category selector
+        categories = await db.get_categories(parent_id=None)
+        if categories:
+            await db.set_fsm(user_id, "sell_pick_category", fdata)
+            await api.send_message(
+                chat_id,
+                "📁 Select a *category* for this product:",
+                kb.seller_category_select_kb(categories),
+            )
+        else:
+            # No categories exist — create product without category
+            await _create_product(chat_id, user_id, fdata, category_id=None)
 
-    elif state == "sell_options":
-        options = []
-        if text.strip().lower() != "skip":
-            try:
-                options = json.loads(text)
-            except json.JSONDecodeError:
-                await api.send_message(chat_id, "❌ Invalid JSON. Try again or type 'skip':")
-                return
-
-        user = await db.get_user(user_id)
-        product_id = await db.add_product(
-            seller_id=user["id"],
-            name=fdata["name"],
-            description=fdata["description"],
-            price=fdata["price"],
-            category=fdata.get("category", ""),
-            options=options,
-        )
-        await db.clear_fsm(user_id)
-        await api.send_message(
-            chat_id,
-            f"✅ Product *{fdata['name']}* created (ID: {product_id})!\n\nWant to upload images?",
-            kb._inline_kb([
-                [kb._btn("📷 Upload Images", f"sell:img:{product_id}")],
-                [kb._btn("◀️ Seller Menu", "sell:menu")],
-            ]),
-        )
-
-    # Edit fields
+    # ── Edit fields ──
     elif state == "edit_name":
         await db.update_product(fdata["product_id"], name=text)
         await db.clear_fsm(user_id)
@@ -234,16 +291,6 @@ async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
         await db.update_product(fdata["product_id"], description=text)
         await db.clear_fsm(user_id)
         await api.send_message(chat_id, "✅ Description updated!", kb.back_kb(f"sell:edit:{fdata['product_id']}"))
-
-    elif state == "edit_options":
-        try:
-            options = json.loads(text)
-        except json.JSONDecodeError:
-            await api.send_message(chat_id, "❌ Invalid JSON:")
-            return
-        await db.update_product(fdata["product_id"], options=options)
-        await db.clear_fsm(user_id)
-        await api.send_message(chat_id, "✅ Options updated!", kb.back_kb(f"sell:edit:{fdata['product_id']}"))
 
 
 async def handle_photo(chat_id: int, user_id: int, file_id: str, msg_id: int):

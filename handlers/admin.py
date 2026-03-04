@@ -59,6 +59,25 @@ async def handle_callback(chat_id: int, user_id: int, data: str, msg_id: int):
     elif action == "resolve_dispute":
         dispute_id = int(parts[2])
         await resolve_dispute(chat_id, msg_id, dispute_id)
+    elif action == "categories":
+        await list_categories(chat_id, msg_id)
+    elif action == "add_cat":
+        await start_add_category(chat_id, user_id, msg_id)
+    elif action == "view_cat":
+        cat_id = int(parts[2])
+        await view_category(chat_id, msg_id, cat_id)
+    elif action == "add_subcat":
+        parent_id = int(parts[2])
+        await start_add_subcategory(chat_id, user_id, msg_id, parent_id)
+    elif action == "del_cat":
+        cat_id = int(parts[2])
+        await delete_category(chat_id, msg_id, cat_id)
+    elif action == "view_subcat":
+        subcat_id = int(parts[2])
+        await view_subcategory(chat_id, msg_id, subcat_id)
+    elif action == "del_subcat":
+        subcat_id = int(parts[2])
+        await delete_subcategory(chat_id, msg_id, subcat_id)
 
 
 async def admin_menu(chat_id: int, msg_id: int):
@@ -283,8 +302,77 @@ async def resolve_dispute(chat_id: int, msg_id: int, dispute_id: int):
         )
 
 
+# ── Categories ─────────────────────────────────────────
+async def list_categories(chat_id: int, msg_id: int):
+    categories = await db.get_categories(parent_id=None)
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(
+        chat_id,
+        "📁 *Categories*" if categories else "📁 No categories yet.",
+        kb.admin_categories_kb(categories),
+    )
+
+
+async def start_add_category(chat_id: int, user_id: int, msg_id: int):
+    await db.set_fsm(user_id, "admin_cat_name", {})
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(chat_id, "Enter the new category name:")
+
+
+async def view_category(chat_id: int, msg_id: int, cat_id: int):
+    cat = await db.get_category(cat_id)
+    if not cat:
+        await api.delete_message(chat_id, msg_id)
+        await api.send_message(chat_id, "❌ Category not found.", kb.back_kb("adm:categories"))
+        return
+    subcategories = await db.get_categories(parent_id=cat_id)
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(
+        chat_id,
+        f"📂 *{cat['name']}*\n\nSubcategories: {len(subcategories)}",
+        kb.admin_subcategories_kb(subcategories, cat_id),
+    )
+
+
+async def start_add_subcategory(chat_id: int, user_id: int, msg_id: int, parent_id: int):
+    await db.set_fsm(user_id, "admin_subcat_name", {"parent_id": parent_id})
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(chat_id, "Enter the subcategory name:")
+
+
+async def delete_category(chat_id: int, msg_id: int, cat_id: int):
+    await db.delete_category(cat_id)
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(chat_id, "✅ Category deleted.", kb.back_kb("adm:categories"))
+
+
+async def view_subcategory(chat_id: int, msg_id: int, subcat_id: int):
+    subcat = await db.get_category(subcat_id)
+    if not subcat:
+        await api.delete_message(chat_id, msg_id)
+        await api.send_message(chat_id, "❌ Subcategory not found.", kb.back_kb("adm:categories"))
+        return
+    await api.delete_message(chat_id, msg_id)
+    await api.send_message(
+        chat_id,
+        f"📁 *{subcat['name']}*",
+        kb.admin_subcat_actions_kb(subcat_id, subcat["parent_id"]),
+    )
+
+
+async def delete_subcategory(chat_id: int, msg_id: int, subcat_id: int):
+    subcat = await db.get_category(subcat_id)
+    parent_id = subcat["parent_id"] if subcat else None
+    await db.delete_category(subcat_id)
+    await api.delete_message(chat_id, msg_id)
+    if parent_id:
+        await api.send_message(chat_id, "✅ Subcategory deleted.", kb.back_kb(f"adm:view_cat:{parent_id}"))
+    else:
+        await api.send_message(chat_id, "✅ Deleted.", kb.back_kb("adm:categories"))
+
+
 async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
-    """FSM handler for admin add-seller."""
+    """FSM handler for admin text inputs."""
     if not is_admin(user_id):
         return
 
@@ -305,4 +393,27 @@ async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
             chat_id,
             f"✅ User {target_id} is now a seller!",
             kb.back_kb("adm:menu"),
+        )
+
+    elif state == "admin_cat_name":
+        name = text.strip()
+        if not name:
+            await api.send_message(chat_id, "❌ Name cannot be empty. Try again:")
+            return
+        await db.create_category(name)
+        await db.clear_fsm(user_id)
+        await api.send_message(chat_id, f"✅ Category *{name}* created!", kb.back_kb("adm:categories"))
+
+    elif state == "admin_subcat_name":
+        name = text.strip()
+        if not name:
+            await api.send_message(chat_id, "❌ Name cannot be empty. Try again:")
+            return
+        parent_id = fdata.get("parent_id")
+        await db.create_category(name, parent_id=parent_id)
+        await db.clear_fsm(user_id)
+        await api.send_message(
+            chat_id,
+            f"✅ Subcategory *{name}* created!",
+            kb.back_kb(f"adm:view_cat:{parent_id}"),
         )
