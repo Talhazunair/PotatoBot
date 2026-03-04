@@ -326,7 +326,7 @@ async def get_product(product_id: int) -> dict | None:
 
 
 async def list_products(page: int = 0, limit: int = 5, seller_id: int | None = None,
-                        active_only: bool = True) -> list[dict]:
+                        active_only: bool = True, category_id: int | None = None) -> list[dict]:
     q = "SELECT * FROM products WHERE 1=1"
     params = []
     idx = 1
@@ -335,6 +335,10 @@ async def list_products(page: int = 0, limit: int = 5, seller_id: int | None = N
     if seller_id is not None:
         q += f" AND seller_id=${idx}"
         params.append(seller_id)
+        idx += 1
+    if category_id is not None:
+        q += f" AND category_id=${idx}"
+        params.append(category_id)
         idx += 1
 
     q += f" ORDER BY id DESC LIMIT ${idx} OFFSET ${idx+1}"
@@ -345,7 +349,8 @@ async def list_products(page: int = 0, limit: int = 5, seller_id: int | None = N
         return [dict(r) for r in rows]
 
 
-async def count_products(seller_id: int | None = None, active_only: bool = True) -> int:
+async def count_products(seller_id: int | None = None, active_only: bool = True,
+                         category_id: int | None = None) -> int:
     q = "SELECT COUNT(*) FROM products WHERE 1=1"
     params = []
     idx = 1
@@ -354,6 +359,10 @@ async def count_products(seller_id: int | None = None, active_only: bool = True)
     if seller_id is not None:
         q += f" AND seller_id=${idx}"
         params.append(seller_id)
+        idx += 1
+    if category_id is not None:
+        q += f" AND category_id=${idx}"
+        params.append(category_id)
         idx += 1
 
     async with pool().acquire() as conn:

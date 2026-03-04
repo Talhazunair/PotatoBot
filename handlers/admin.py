@@ -413,10 +413,21 @@ async def handle_text(chat_id: int, user_id: int, text: str, msg_id: int):
             await api.send_message(chat_id, "❌ Name cannot be empty. Try again:")
             return
         parent_id = fdata.get("parent_id")
-        await db.create_category(name, parent_id=parent_id)
-        await db.clear_fsm(user_id)
-        await api.send_message(
-            chat_id,
-            f"✅ Subcategory *{name}* created!",
-            kb.back_kb(f"adm:view_cat:{parent_id}"),
-        )
+        try:
+            parent_id = int(parent_id) if parent_id is not None else None
+            log.info("Creating subcategory '%s' under parent_id=%s", name, parent_id)
+            await db.create_category(name, parent_id=parent_id)
+            await db.clear_fsm(user_id)
+            await api.send_message(
+                chat_id,
+                f"✅ Subcategory *{name}* created!",
+                kb.back_kb(f"adm:view_cat:{parent_id}"),
+            )
+        except Exception as e:
+            log.exception("Failed to create subcategory: %s", e)
+            await db.clear_fsm(user_id)
+            await api.send_message(
+                chat_id,
+                f"❌ Failed to create subcategory: {e}",
+                kb.back_kb("adm:categories"),
+            )

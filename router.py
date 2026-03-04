@@ -115,12 +115,15 @@ async def _handle_message(msg: dict):
     # ── Commands ───────────────────────────────────
     if text.startswith("/start"):
         first_name = user.get("first_name", "")
+        # Delete user's /start message to keep chat clean
+        await api.delete_message(chat_id, msg_id)
         await start.handle_start(chat_id, user_id, first_name, text, msg_id)
         return
 
     if text.strip() == "/done":
         st, _ = await db.get_fsm(user_id)
         if st == "sell_image":
+            await api.delete_message(chat_id, msg_id)
             await seller.handle_done(chat_id, user_id, msg_id)
             return
 
@@ -129,6 +132,8 @@ async def _handle_message(msg: dict):
     if state:
         for prefix, handler in FSM_TEXT_HANDLERS.items():
             if state.startswith(prefix):
+                # Delete user's text message to keep chat clean
+                await api.delete_message(chat_id, msg_id)
                 await handler.handle_text(chat_id, user_id, text, msg_id)
                 return
 

@@ -17,7 +17,7 @@ def _btn(text: str, data: str) -> dict:
 # ── Menus ──────────────────────────────────────────────
 def main_menu_kb() -> dict:
     return _inline_kb([
-        [_btn("🛍 Browse Products", "prod:list:0")],
+        [_btn("🛍 Browse Products", "prod:browse")],
         [_btn("🛒 My Cart", "cart:view"), _btn("📦 My Orders", "order:list")],
         [_btn("📍 My Addresses", "addr:list"), _btn("💰 My Wallet", "wal:view")],
         [_btn("⚠️ My Disputes", "disp:list"), _btn("📞 Support", "supp:start")],
@@ -27,7 +27,7 @@ def main_menu_kb() -> dict:
 
 def main_menu_with_seller_kb() -> dict:
     return _inline_kb([
-        [_btn("🛍 Browse Products", "prod:list:0")],
+        [_btn("🛍 Browse Products", "prod:browse")],
         [_btn("🛒 My Cart", "cart:view"), _btn("📦 My Orders", "order:list")],
         [_btn("📍 My Addresses", "addr:list"), _btn("💰 My Wallet", "wal:view")],
         [_btn("⚠️ My Disputes", "disp:list"), _btn("📞 Support", "supp:start")],
@@ -37,7 +37,7 @@ def main_menu_with_seller_kb() -> dict:
 
 def main_menu_with_admin_kb() -> dict:
     return _inline_kb([
-        [_btn("🛍 Browse Products", "prod:list:0")],
+        [_btn("🛍 Browse Products", "prod:browse")],
         [_btn("🛒 My Cart", "cart:view"), _btn("📦 My Orders", "order:list")],
         [_btn("📍 My Addresses", "addr:list"), _btn("💰 My Wallet", "wal:view")],
         [_btn("⚠️ My Disputes", "disp:list"), _btn("📞 Support", "supp:start")],
@@ -51,25 +51,50 @@ def back_kb(callback: str = "menu:main") -> dict:
 
 
 # ── Products ───────────────────────────────────────────
-def products_kb(products: list[dict], page: int, total: int, per_page: int = 5) -> dict:
+def buyer_categories_kb(categories: list[dict]) -> dict:
+    """Category list for buyer browsing."""
+    rows: list[list[dict]] = []
+    # Pair categories 2 per row
+    for i in range(0, len(categories), 2):
+        row = [_btn(f"📂 {categories[i]['name']}", f"prod:cat:{categories[i]['id']}")]
+        if i + 1 < len(categories):
+            row.append(_btn(f"📂 {categories[i+1]['name']}", f"prod:cat:{categories[i+1]['id']}"))
+        rows.append(row)
+    rows.append([_btn("🛍 All Products", "prod:list:0")])
+    rows.append([_btn("◀️ Main Menu", "menu:main")])
+    return _inline_kb(rows)
+
+
+def buyer_subcategories_kb(subcategories: list[dict], parent_id: int) -> dict:
+    """Subcategory list for buyer browsing."""
+    rows: list[list[dict]] = []
+    for s in subcategories:
+        rows.append([_btn(f"📁 {s['name']}", f"prod:subcat:{s['id']}")])
+    rows.append([_btn("🛍 All in this category", f"prod:cat_all:{parent_id}")])
+    rows.append([_btn("◀️ Back", "prod:browse")])
+    return _inline_kb(rows)
+
+
+def products_kb(products: list[dict], page: int, total: int, per_page: int = 5,
+                back_cb: str = "prod:browse") -> dict:
     rows: list[list[dict]] = []
     for p in products:
         rows.append([_btn(f"{p['name']} — ${p['price']:.2f}", f"prod:view:{p['id']}")])
     nav: list[dict] = []
     if page > 0:
-        nav.append(_btn("⬅️ Prev", f"prod:list:{page - 1}"))
+        nav.append(_btn("⬅️ Prev", f"prod:page:{page - 1}"))
     if (page + 1) * per_page < total:
-        nav.append(_btn("Next ➡️", f"prod:list:{page + 1}"))
+        nav.append(_btn("Next ➡️", f"prod:page:{page + 1}"))
     if nav:
         rows.append(nav)
-    rows.append([_btn("◀️ Main Menu", "menu:main")])
+    rows.append([_btn("◀️ Back", back_cb)])
     return _inline_kb(rows)
 
 
 def product_detail_kb(product: dict) -> dict:
     rows: list[list[dict]] = []
     rows.append([_btn("🛒 Add to Cart", f"cart:add:{product['id']}")])
-    rows.append([_btn("◀️ Back to Products", "prod:list:0")])
+    rows.append([_btn("◀️ Back to Products", "prod:browse")])
     return _inline_kb(rows)
 
 
