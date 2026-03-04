@@ -1,8 +1,11 @@
 """Admin panel — manage sellers, products, support tickets, disputes."""
+import logging
 import potato_api as api
 import database as db
 import keyboards as kb
 from config import ADMIN_IDS, PRODUCTS_PER_PAGE
+
+log = logging.getLogger("admin")
 
 
 def is_admin(user_id: int) -> bool:
