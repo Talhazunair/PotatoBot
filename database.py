@@ -153,6 +153,11 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+        """)
+
+    # Create categories table in a separate connection
+    async with POOL.acquire() as conn:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -160,13 +165,14 @@ async def init_db():
             );
         """)
 
-        # Add category_id column to products if not exists
+    # Add category_id column to products in a separate connection
+    async with POOL.acquire() as conn:
         try:
             await conn.execute("""
                 ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id);
             """)
-        except Exception:
-            pass  # Column already exists
+        except Exception as e:
+            log.warning("Could not add category_id column (may already exist): %s", e)
 
 
 def pool() -> asyncpg.Pool:
